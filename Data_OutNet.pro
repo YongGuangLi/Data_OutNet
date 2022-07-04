@@ -18,14 +18,14 @@ TEMPLATE = app
 SOURCES += main.cpp \
     outnetferry.cpp \
     RedisHelper.cpp \
-    mqttsyncclient.cpp \
+    mqttasyncclient.cpp \
     ferryutils.cpp \
     RemotePoint.pb.cc
 
 HEADERS += \
     outnetferry.h \
     RedisHelper.h \
-    mqttsyncclient.h \
+    mqttasyncclient.h \
     ferryutils.h \
     RemotePoint.pb.h
 
@@ -33,11 +33,6 @@ unix:!macx: LIBS += -L$$PWD/../crypto/lib/ -lyyapi
 
 INCLUDEPATH += $$PWD/../crypto/include
 DEPENDPATH += $$PWD/../crypto/include
-
-unix:!macx: LIBS += -L$$PWD/../mqtt/lib/ -lpaho-mqtt3c
-
-INCLUDEPATH += $$PWD/../mqtt/include
-DEPENDPATH += $$PWD/../mqtt/include
 
 
 win32:CONFIG(release, debug|release): LIBS += -L$$PWD/../qjson/lib/release/ -lqjson
@@ -61,3 +56,8 @@ else:unix: LIBS += -L$$PWD/../protobuf-3.3.0/lib/ -lprotobuf
 INCLUDEPATH += $$PWD/../protobuf-3.3.0/include
 DEPENDPATH += $$PWD/../protobuf-3.3.0/include
 
+
+unix:!macx: LIBS += -L$$PWD/../mqtt/lib/ -lpaho-mqtt3a
+
+INCLUDEPATH += $$PWD/../mqtt/include
+DEPENDPATH += $$PWD/../mqtt/include

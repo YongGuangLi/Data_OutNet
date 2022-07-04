@@ -15,7 +15,7 @@
 #include <QMapIterator>
 #include <QtCore>
 #include "RedisHelper.h"
-#include "mqttsyncclient.h"
+#include "mqttasyncclient.h"
 #include "ferryutils.h"
 #include "RemotePoint.pb.h"
 
@@ -55,7 +55,7 @@ public:
     * @return
     * @brief     保存MQTT连接客户端
    */
-    void addMQTTSyncClient(QString id, MQTTSyncClient*client);
+    void addMQTTAsyncClient(MQTTAsyncClient*client);
 
     /**
     * @date      2022-04-26
@@ -63,7 +63,7 @@ public:
     * @return
     * @brief     监视redis中的链表，如有数据则发布到MQTT云平台
    */
-    void watchRedisList();
+    void watchRedisList(MQTTAsyncClient *client);
 
     /**
     * @date      2022-04-24
@@ -78,8 +78,7 @@ signals:
 public slots:
 
 private:
-    QMutex mutex_;
-    QMap<QString, MQTTSyncClient*> mapMQTTClients_;
+    QList<MQTTAsyncClient*> listMQTTClients_;
 };
 
 #endif // OUTNETFERRY_H

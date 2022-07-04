@@ -23,7 +23,6 @@ int FerryUtils::ferryRecv(void *buf, size_t *count)
         return -1;
 
     int rc = yy_ferry_recv(dev, 0, virt_chan, buf, count);
-    printf("size = %d rc = %d\n", *count, rc);
     return rc;
 }
 

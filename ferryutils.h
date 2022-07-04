@@ -15,8 +15,8 @@ public:
     /**
     * @date      2022-04-24
     * @param
-    * @return
-    * @brief     打开隔离卡设备
+    * @return    返回0成功
+    * @brief     打开隔离模块
     */
     int openDevice();
 
@@ -31,16 +31,16 @@ public:
     /**
     * @date      2022-04-24
     * @param
-    * @return
-    * @brief     接受数据
+    * @return    返回0成功
+    * @brief     读数据
     */
     int ferryRecv(void *buf, size_t *count);
 
     /**
     * @date      2022-04-24
     * @param
-    * @return
-    * @brief     发送数据
+    * @return    返回0成功
+    * @brief     写数据
     */
     int ferrySend(void *buf, size_t count);
 private:

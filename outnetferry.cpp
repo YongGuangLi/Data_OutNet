@@ -4,25 +4,28 @@ OutNetFerry::OutNetFerry(QObject *parent):QObject(parent)
 {
     initMQTTConfig();
 
-    if(SingleRedisHelp->connect())
-        qDebug()<<"Redis Connect Sucess";
-
-
     QtConcurrent::run(this, &OutNetFerry::ferryTask);
 
-    QtConcurrent::run(this, &OutNetFerry::watchRedisList);
+
+    for(int i = 0; i < listMQTTClients_.size(); ++i)
+    {
+        MQTTAsyncClient* client = listMQTTClients_.at(i);
+        QtConcurrent::run(this, &OutNetFerry::watchRedisList, client);
+    }
 }
 
 OutNetFerry::~OutNetFerry()
 {
-    qDebug()<<"in1111111111111111";
 }
 
 bool OutNetFerry::initMQTTConfig()
 {
     QFile file(qApp->applicationDirPath() + QDir::separator() + "MQTTConfig.xml");
     if (!file.open(QIODevice::ReadOnly))
+    {
+        qCritical()<<"MQTTConfig Read Failure";
         return false;
+    }
 
     QDomDocument doc;
     if (!doc.setContent(&file))
@@ -47,17 +50,15 @@ bool OutNetFerry::initMQTTConfig()
             QString pubTopic = e.attribute("pubTopic");
             QString subTopic = e.attribute("subTopic");
 
-            if(mapMQTTClients_.contains(id))
-                qWarning()<<"MQTT id exist:"<<id;
-            else
-            {
-                MQTTSyncClient *client = new MQTTSyncClient(serverURI.toStdString(), clientId.toStdString(), pubTopic.toStdString(), subTopic.toStdString());
-                addMQTTSyncClient(id, client);
 
-                int result = client->connect(userName.toStdString(), passWord.toStdString());
-                if(!result)
-                    qDebug()<<"MQTT Connect Success:"<<serverURI;
-            }
+            MQTTAsyncClient *client = new MQTTAsyncClient(id.toStdString() , serverURI.toStdString(), clientId.toStdString(), pubTopic.toStdString(), subTopic.toStdString());
+            addMQTTAsyncClient(client);
+
+            client->connect(userName.toStdString(), passWord.toStdString());
+            sleep(1);
+
+            client->subscribe(subTopic.toStdString());
+            sleep(1);
         }
         n = n.nextSibling();
     }
@@ -86,7 +87,7 @@ QVariantMap OutNetFerry::RemotePointToJson(google::protobuf::RemotePoint remoteP
         jsonObject.insert("name", QString::fromStdString(name));
         string timestamp = pointDPS.timestamp();
         jsonObject.insert("timestamp", QString::fromStdString(timestamp));
-        float value = pointDPS.value();
+        int value = pointDPS.value();
         jsonObject.insert("value", value);
         break;
     }
@@ -99,7 +100,7 @@ QVariantMap OutNetFerry::RemotePointToJson(google::protobuf::RemotePoint remoteP
         jsonObject.insert("name", QString::fromStdString(name));
         string timestamp = pointMV.timestamp();
         jsonObject.insert("timestamp", QString::fromStdString(timestamp));
-        int value = pointMV.value();
+        float value = pointMV.value();
         jsonObject.insert("value", value);
         break;
     }
@@ -111,39 +112,34 @@ QVariantMap OutNetFerry::RemotePointToJson(google::protobuf::RemotePoint remoteP
 
 
 
-void OutNetFerry::addMQTTSyncClient(QString id, MQTTSyncClient *client)
+void OutNetFerry::addMQTTAsyncClient( MQTTAsyncClient *client)
 {
-    mapMQTTClients_[id] = client;
+    listMQTTClients_.push_back(client);
 }
 
-void OutNetFerry::watchRedisList()
+void OutNetFerry::watchRedisList(MQTTAsyncClient *client)
 {
+    string id = client->getId();
     while (true)
     {
-        QMapIterator<QString, MQTTSyncClient*> it(mapMQTTClients_);
-        while(it.hasNext())
+        while(SingleRedisHelp->llen(id))
         {
-            it.next();
-            QString id = it.key();
-            MQTTSyncClient *client = it.value();
-
-            while(SingleRedisHelp->llen(id.toStdString()))
+            if(client->isConnect() == 0)
             {
-                QMutexLocker loker(&mutex_);
-                if(client->isConnect())
+                string payload;
+                if(SingleRedisHelp->brpop(id, payload))
                 {
-                    string payload;
-                    if(SingleRedisHelp->brpop(id.toStdString(), payload))
-                    {
-                        qDebug()<<"payload:"<<payload.c_str();
-                        client->publish(payload.c_str());
-                    }
+                    qDebug()<<"Payload:"<<payload.c_str();
+                    client->publish(payload.c_str());
                 }
-                else if(client->connect() != 0)            //重连，如果重连失败退出循环
-                    break;
             }
-            sleep(1);
+            else
+            {
+                client->connect();
+                break;
+            }
         }
+        sleep(1);
     }
 }
 
@@ -165,6 +161,8 @@ void OutNetFerry::ferryTask()
         memset(buf, 0, 1024);
         size_t size = 0;
         rc = ferryUtils.ferryRecv(buf, &size);
+        //QString strDateTime = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz");
+        //qDebug()<<1<<strDateTime;
         if(!rc)
         {
             google::protobuf::RemotePoint remotePoint;
@@ -174,24 +172,24 @@ void OutNetFerry::ferryTask()
                 QVariantMap jsonObject = RemotePointToJson(remotePoint);
                 QString payload = JsonToString(jsonObject);
 
-                QMapIterator<QString, MQTTSyncClient*> it(mapMQTTClients_);
-                while(it.hasNext())
+                for(int i = 0; i < listMQTTClients_.size(); ++i)
                 {
-                    it.next();
-                    QString id = it.key();
-                    MQTTSyncClient *client = it.value();
+                    MQTTAsyncClient* client = listMQTTClients_.at(i);
+                    string id = client->getId();
 
-                    QMutexLocker loker(&mutex_);
-                    if(client->publish(payload.toStdString().c_str()))
+                    if(client->publish(payload.toStdString().c_str()) != 0)
                     {
-                        qWarning()<<"MQTT Push Failure,Cache To Redis";
-                        SingleRedisHelp->lpush(id.toStdString(), payload.toStdString());
+                        qWarning()<<"MQTT Push Failure,Cache To Redis,ID:"<<id.c_str();
+                        SingleRedisHelp->lpush(id, payload.toStdString());
                     }
                 }
+                qDebug()<<payload;
             }
+            //QString strDateTime1 = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz");
+            //qDebug()<<2<<strDateTime1;
         }
         else
-            sleep(1);
+            usleep(1000);
     }
 }
 
